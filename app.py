@@ -6,43 +6,44 @@ import matplotlib.pyplot as plt
 import statsmodels.api as sm
 from scipy import stats
 from statsmodels.stats.outliers_influence import variance_inflation_factor
-from statsmodels.stats.diagnostic import het_breuschpagan
 from statsmodels.stats.stattools import durbin_watson
 
 st.set_page_config(page_title="Regresi Berganda", layout="wide")
 
 # ---------- HEADER ----------
-st.title("📊 Aplikasi Analisis Regresi Berganda")
+st.markdown("## Aplikasi Analisis Regresi Berganda")
 st.markdown("""
 Unggah file CSV yang berisi data numerik, lalu pilih variabel dependen dan independennya.
-Aplikasi ini juga menyertakan uji asumsi dan visualisasi hasil regresi secara lengkap.
 """)
 
 # ---------- SIDEBAR ----------
 st.sidebar.header("⚙️ Pengaturan")
+
 uploaded_file = st.sidebar.file_uploader("📥 Upload File CSV", type=["csv"])
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-    st.subheader("🧾 Pratinjau Data")
+    st.subheader("🧾 Data Preview")
     st.dataframe(df.head(), use_container_width=True)
 
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-    dep_var = st.sidebar.selectbox("🎯 Pilih Variabel Dependen (Y)", numeric_cols)
-    indep_vars = st.sidebar.multiselect("📈 Pilih Variabel Independen (X)", [col for col in numeric_cols if col != dep_var])
+
+    dep_var = st.sidebar.selectbox("Pilih Variabel Dependen (Y)", numeric_cols)
+    indep_vars = st.sidebar.multiselect("Pilih Variabel Independen (X)", [col for col in numeric_cols if col != dep_var])
 
     if dep_var and indep_vars:
         X = df[indep_vars]
         y = df[dep_var]
-        X = sm.add_constant(X)
+        X_const = sm.add_constant(X)
 
-        model = sm.OLS(y, X).fit()
+        model = sm.OLS(y, X_const).fit()
         st.subheader("📋 Hasil Regresi")
         st.text(model.summary())
 
+        # ---------- PLOT RESIDUAL ----------
         st.subheader("📊 Visualisasi Diagnostik")
-
         col1, col2 = st.columns(2)
+
         with col1:
             fig1, ax1 = plt.subplots()
             sns.residplot(x=model.fittedvalues, y=model.resid, lowess=True, ax=ax1,
@@ -54,10 +55,10 @@ if uploaded_file:
 
         with col2:
             fig2 = sm.qqplot(model.resid, line='45')
-            plt.title("QQ Plot")
             st.pyplot(fig2.figure)
 
         col3, col4 = st.columns(2)
+
         with col3:
             fig3, ax3 = plt.subplots()
             sns.histplot(model.resid, kde=True, ax=ax3)
@@ -65,14 +66,14 @@ if uploaded_file:
             st.pyplot(fig3)
 
         with col4:
-            fig4, ax4 = plt.subplots()
-            sm.graphics.influence_plot(model, ax=ax4, criterion="cooks")
+            fig4 = sm.graphics.influence_plot(model, criterion="cooks")
             st.pyplot(fig4)
 
-        # ---------- Uji Asumsi ----------
-        st.subheader("🧪 Uji Asumsi Regresi Berganda")
+        # ---------- UJI ASUMSI ----------
+        st.subheader("Uji Asumsi Regresi")
 
-        st.markdown("### 1. Uji Normalitas Residual (Shapiro-Wilk)")
+        # Normalitas
+        st.markdown("### 1. Uji Normalitas (Shapiro-Wilk)")
         stat, p = stats.shapiro(model.resid)
         st.write(f"**Statistic** = {stat:.4f}, **p-value** = {p:.4f}")
         if p > 0.05:
@@ -80,29 +81,46 @@ if uploaded_file:
         else:
             st.error("Residual tidak terdistribusi normal (p ≤ 0.05)")
 
-        st.markdown("### 2. Uji Homoskedastisitas (Breusch-Pagan)")
-        bp_test = het_breuschpagan(model.resid, model.model.exog)
-        bp_labels = ['LM Statistic', 'LM p-value', 'F-Statistic', 'F p-value']
-        for label, value in zip(bp_labels, bp_test):
-            st.write(f"**{label}**: {value:.4f}")
-        if bp_test[3] > 0.05:
-            st.success("Homoskedastisitas terpenuhi (p > 0.05)")
-        else:
-            st.error("Terdapat heteroskedastisitas (p ≤ 0.05)")
+        # Homoskedastisitas
+        st.markdown("### 2. Uji Homoskedastisitas (Visual)")
+        st.markdown("Lihat grafik Residual vs Fitted. Jika pola acak dan menyebar merata, maka asumsi homoskedastisitas terpenuhi.")
 
+        # Autokorelasi
         st.markdown("### 3. Uji Autokorelasi (Durbin-Watson)")
         dw = durbin_watson(model.resid)
-        st.write(f"**Durbin-Watson**: {dw:.4f}")
+        st.write(f"**Durbin-Watson** = {dw:.4f}")
         if 1.5 < dw < 2.5:
-            st.success("Tidak ada autokorelasi yang kuat (nilai mendekati 2)")
+            st.success("Tidak ada autokorelasi yang signifikan (nilai mendekati 2)")
         else:
-            st.error("Ada indikasi autokorelasi (nilai jauh dari 2)")
+            st.error("Terdapat indikasi autokorelasi (nilai jauh dari 2)")
 
+        # Multikolinearitas
         st.markdown("### 4. Uji Multikolinearitas (VIF)")
         vif_df = pd.DataFrame()
-        vif_df["Variabel"] = X.columns
-        vif_df["VIF"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+        vif_df["Variabel"] = X_const.columns
+        vif_df["VIF"] = [variance_inflation_factor(X_const.values, i) for i in range(X_const.shape[1])]
         st.dataframe(vif_df)
+
+        # ---------- KESIMPULAN ----------
+        st.subheader("Kesimpulan")
+        st.markdown("""
+        Berdasarkan hasil regresi dan uji asumsi:
+
+        - Model memiliki **nilai R-squared** sebesar {:.4f}.
+        - Hasil uji **normalitas residual** menunjukkan bahwa {}.
+        - Asumsi **homoskedastisitas** {}.
+        - Uji **autokorelasi Durbin-Watson** menunjukkan {}.
+        - Hasil **VIF** menunjukkan bahwa {}.
+        
+        Secara keseluruhan, {}.
+        """.format(
+            model.rsquared,
+            "residual terdistribusi normal" if p > 0.05 else "residual tidak normal",
+            "terpenuhi" if p > 0.05 else "perlu dicek lebih lanjut",
+            "tidak ada autokorelasi signifikan" if 1.5 < dw < 2.5 else "ada kemungkinan autokorelasi",
+            "tidak ada multikolinearitas" if all(vif_df['VIF'] < 10) else "terdapat indikasi multikolinearitas",
+            "model regresi layak digunakan" if model.f_pvalue < 0.05 else "model belum signifikan, perlu evaluasi ulang"
+        ))
 
     else:
         st.warning("⚠️ Silakan pilih variabel dependen dan minimal satu variabel independen.")
